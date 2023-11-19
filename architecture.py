@@ -61,11 +61,13 @@ class Model(nn.Module):
 
     def forward(self, x_feat, x_raw, session_ids):
         # x shape is (batch, time, electrode)
+        # breakpoint()
 
         if self.training:
             r = random.randrange(8)
             if r > 0:
-                x_raw[:,:-r,:] = x_raw[:,r:,:] # shift left r
+                clone = torch.clone(x_raw)
+                x_raw[:,:-r,:] = clone[:,r:,:] # shift left r
                 x_raw[:,-r:,:] = 0
 
         x_raw = x_raw.transpose(1,2) # put channel before time for conv

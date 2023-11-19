@@ -110,6 +110,9 @@ def dtw_loss(predictions, phoneme_predictions, example, phoneme_eval=False, phon
     correct_phones = 0
     total_length = 0
     for pred, y, pred_phone, y_phone, silent in zip(predictions, audio_features, phoneme_predictions, phoneme_targets, example['silent']):
+        y = torch.squeeze(y)
+        y = torch.transpose(y, 0, 1)
+
         assert len(pred.size()) == 2 and len(y.size()) == 2
         y_phone = y_phone.to(device)
 
@@ -189,7 +192,7 @@ def train_model(trainset, devset, device, save_sound_outputs=True):
         if iteration <= FLAGS.learning_rate_warmup:
             set_lr(iteration*target_lr/FLAGS.learning_rate_warmup)
 
-    seq_len = 200
+    seq_len = 200 # why?
 
     batch_idx = 0
     for epoch_idx in range(n_epochs):
@@ -234,8 +237,8 @@ def main():
             logging.StreamHandler()
             ], level=logging.INFO, format="%(message)s")
 
-    logging.info(subprocess.run(['git','rev-parse','HEAD'], stdout=subprocess.PIPE, universal_newlines=True).stdout)
-    logging.info(subprocess.run(['git','diff'], stdout=subprocess.PIPE, universal_newlines=True).stdout)
+    # logging.info(subprocess.run(['git','rev-parse','HEAD'], stdout=subprocess.PIPE, universal_newlines=True).stdout)
+    # logging.info(subprocess.run(['git','diff'], stdout=subprocess.PIPE, universal_newlines=True).stdout)
 
     logging.info(sys.argv)
 

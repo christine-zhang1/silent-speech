@@ -25,7 +25,7 @@ def clean_directory(directory):
     all_rmses = []
     for fname in audio_file_names:
         data, rate = sf.read(fname)
-        rms = librosa.feature.rms(data)[0]
+        rms = librosa.feature.rms(y=data)[0]
         all_rmses.append(rms)
 
     silent_cutoff = 0.02
@@ -48,10 +48,13 @@ def clean_directory(directory):
 
     for i, fname in enumerate(audio_file_names):
         data, rate = sf.read(fname)
-
-        clean = nr.reduce_noise(audio_clip=data, noise_clip=silence)
+        print(fname)
+        clean = nr.reduce_noise(y=data, sr=rate, y_noise=silence) # cz: what should sr be?
+        if np.isnan(clean).any():
+            print('skipping', fname)
+            continue
         if rate != 22050:
-            clean = librosa.resample(clean, rate, 22050)
+            clean = librosa.resample(y=clean, orig_sr=rate, target_sr=22050)
             rate = 22050
         if not is_silent:
             clean *= target_rms / smoothed_maxes[i]

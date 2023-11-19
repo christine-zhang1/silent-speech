@@ -67,6 +67,7 @@ class MultiHeadAttention(nn.Module):
     d_qkv = d_model // n_head
     assert d_qkv * n_head == d_model, 'd_model must be divisible by n_head'
     self.d_qkv = d_qkv
+    self.batch_first = False
 
     self.w_q = nn.Parameter(torch.Tensor(n_head, d_model, d_qkv))
     self.w_k = nn.Parameter(torch.Tensor(n_head, d_model, d_qkv))

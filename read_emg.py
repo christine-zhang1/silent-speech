@@ -85,9 +85,12 @@ def load_utterance(base_dir, index, limit_length=False, debug=False, text_align_
     mfccs = load_audio(os.path.join(base_dir, f'{index}_audio_clean.flac'),
             max_frames=min(emg_features.shape[0], 800 if limit_length else float('inf')))
 
-    if emg_features.shape[0] > mfccs.shape[0]:
-        emg_features = emg_features[:mfccs.shape[0],:]
-    assert emg_features.shape[0] == mfccs.shape[0]
+    if emg_features.shape[0] > mfccs.shape[2]:
+        emg_features = emg_features[:mfccs.shape[2],:] # AHA I FOUND IT. mfccs.shape[0] = 1 so this just kills emg_features. i changed mfccs.shape[0] -> mfccs.shape[2]
+    elif emg_features.shape[0] < mfccs.shape[2]:
+        mfccs = mfccs[:, :, :emg_features.shape[0]]
+    assert emg_features.shape[0] == mfccs.shape[2]
+
     emg = emg[6:6+6*emg_features.shape[0],:]
     emg_orig = emg_orig[8:8+8*emg_features.shape[0],:]
     assert emg.shape[0] == emg_features.shape[0]*6
@@ -96,11 +99,12 @@ def load_utterance(base_dir, index, limit_length=False, debug=False, text_align_
         info = json.load(f)
 
     sess = os.path.basename(base_dir)
+    text_align_directory = 'text_alignments'
     tg_fname = f'{text_align_directory}/{sess}/{sess}_{index}_audio.TextGrid'
     if os.path.exists(tg_fname):
-        phonemes = read_phonemes(tg_fname, mfccs.shape[0])
+        phonemes = read_phonemes(tg_fname, mfccs.shape[2]) # changed mfccs.shape[0] -> mfccs.shape[2] 
     else:
-        phonemes = np.zeros(mfccs.shape[0], dtype=np.int64)+phoneme_inventory.index('sil')
+        phonemes = np.zeros(mfccs.shape[2], dtype=np.int64)+phoneme_inventory.index('sil')
 
     return mfccs, emg_features, info['text'], (info['book'],info['sentence_index']), phonemes, emg_orig.astype(np.float32)
 
@@ -229,6 +233,7 @@ class EMGDataset(torch.utils.data.Dataset):
     def __getitem__(self, i):
         directory_info, idx = self.example_indices[i]
         mfccs, emg, text, book_location, phonemes, raw_emg = load_utterance(directory_info.directory, idx, self.limit_length, text_align_directory=self.text_align_directory)
+        # breakpoint()
         raw_emg = raw_emg / 20
         raw_emg = 50*np.tanh(raw_emg/50.)
 
@@ -300,13 +305,13 @@ class EMGDataset(torch.utils.data.Dataset):
                   'text_int_lengths':text_lengths}
         return result
 
-def make_normalizers():
+def make_normalizers(): # this function doesn't get called during training ??
     dataset = EMGDataset(no_normalizers=True)
     mfcc_samples = []
     emg_samples = []
     for d in dataset:
-        mfcc_samples.append(d['audio_features'])
-        emg_samples.append(d['emg'])
+        mfcc_samples.append(d['audio_features']) # [1, 80, time]
+        emg_samples.append(d['emg']) # [1, 112]
         if len(emg_samples) > 50:
             break
     mfcc_norm = FeatureNormalizer(mfcc_samples, share_scale=True)

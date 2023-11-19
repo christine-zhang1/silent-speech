@@ -17,7 +17,7 @@ flags.DEFINE_string('normalizers_file', 'normalizers.pkl', 'file with pickled fe
 phoneme_inventory = ['aa','ae','ah','ao','aw','ax','axr','ay','b','ch','d','dh','dx','eh','el','em','en','er','ey','f','g','hh','hv','ih','iy','jh','k','l','m','n','nx','ng','ow','oy','p','r','s','sh','t','th','uh','uw','v','w','y','z','zh','sil']
 
 def normalize_volume(audio):
-    rms = librosa.feature.rms(audio)
+    rms = librosa.feature.rms(y=audio)
     max_rms = rms.max() + 0.01
     target_rms = 0.2
     audio = audio * (target_rms/max_rms)
@@ -44,19 +44,19 @@ def mel_spectrogram(y, n_fft, num_mels, sampling_rate, hop_size, win_size, fmin,
 
     global mel_basis, hann_window
     if fmax not in mel_basis:
-        mel = librosa.filters.mel(sampling_rate, n_fft, num_mels, fmin, fmax)
+        mel = librosa.filters.mel(sr=sampling_rate, n_fft=n_fft, n_mels=num_mels, fmin=fmin, fmax=fmax)
         mel_basis[str(fmax)+'_'+str(y.device)] = torch.from_numpy(mel).float().to(y.device)
         hann_window[str(y.device)] = torch.hann_window(win_size).to(y.device)
 
     y = torch.nn.functional.pad(y.unsqueeze(1), (int((n_fft-hop_size)/2), int((n_fft-hop_size)/2)), mode='reflect')
     y = y.squeeze(1)
 
-    spec = torch.stft(y, n_fft, hop_length=hop_size, win_length=win_size, window=hann_window[str(y.device)],
+    spec = torch.stft(y, n_fft, return_complex=False, hop_length=hop_size, win_length=win_size, window=hann_window[str(y.device)],
                       center=center, pad_mode='reflect', normalized=False, onesided=True)
 
     spec = torch.sqrt(spec.pow(2).sum(-1)+(1e-9))
 
-    spec = torch.matmul(mel_basis[str(fmax)+'_'+str(y.device)], spec)
+    spec = torch.matmul(mel_basis[str(fmax)+'_'+str(y.device)], spec.T)
     spec = spectral_normalize_torch(spec)
 
     return spec
@@ -72,7 +72,7 @@ def load_audio(filename, start=None, end=None, max_frames=None, renormalize_volu
     if renormalize_volume:
         audio = normalize_volume(audio)
     if r == 16000:
-        audio = librosa.resample(audio, 16000, 22050)
+        audio = librosa.resample(y=audio, orig_sr=16000, target_sr=22050)
     else:
         assert r == 22050
     audio = np.clip(audio, -1, 1) # because resampling sometimes pushes things out of range
@@ -90,6 +90,7 @@ def double_average(x):
     return w
 
 def get_emg_features(emg_data, debug=False):
+    # breakpoint()
     xs = emg_data - emg_data.mean(axis=0, keepdims=True)
     frame_features = []
     for i in range(emg_data.shape[1]):
@@ -99,9 +100,9 @@ def get_emg_features(emg_data, debug=False):
         r = np.abs(p)
 
         w_h = librosa.util.frame(w, frame_length=16, hop_length=6).mean(axis=0)
-        p_w = librosa.feature.rms(w, frame_length=16, hop_length=6, center=False)
+        p_w = librosa.feature.rms(y=w, frame_length=16, hop_length=6, center=False)
         p_w = np.squeeze(p_w, 0)
-        p_r = librosa.feature.rms(r, frame_length=16, hop_length=6, center=False)
+        p_r = librosa.feature.rms(y=r, frame_length=16, hop_length=6, center=False)
         p_r = np.squeeze(p_r, 0)
         z_p = librosa.feature.zero_crossing_rate(p, frame_length=16, hop_length=6, center=False)
         z_p = np.squeeze(z_p, 0)
@@ -146,7 +147,12 @@ class FeatureNormalizer(object):
             self.feature_stddevs = feature_samples.std(axis=0, keepdims=True)
 
     def normalize(self, sample):
-        sample -= self.feature_means
+        if len(self.feature_means.shape) != len(sample.shape):
+            temp = np.repeat(self.feature_means[:, :, np.newaxis], sample.shape[-1], axis=2)
+        else:
+            temp = self.feature_means
+
+        sample -= temp
         sample /= self.feature_stddevs
         return sample
 
@@ -156,6 +162,7 @@ class FeatureNormalizer(object):
         return sample
 
 def combine_fixed_length(tensor_list, length):
+    # breakpoint()
     total_length = sum(t.size(0) for t in tensor_list)
     if total_length % length != 0:
         pad_length = length - (total_length % length)
@@ -172,6 +179,8 @@ def decollate_tensor(tensor, lengths):
     results = []
     idx = 0
     for length in lengths:
+        if idx + length > b * s:
+            breakpoint() 
         assert idx + length <= b * s
         results.append(tensor[idx:idx+length])
         idx += length
